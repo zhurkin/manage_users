@@ -21,7 +21,9 @@
         content: |
           {{ item.username }}   ALL=(ALL) NOPASSWD:ALL
         validate: '/usr/sbin/visudo -cf %s'
-      when: (item.sudo_nopasswd is defined) and (item.use_sudo|bool) and (item.sudo_nopasswd|bool)
+      when:
+        - item.use_sudo is defined and item.use_sudo
+        - item.sudo_nopasswd is defined and item.sudo_nopasswd
       loop: "{{ (manage_users | default([]) ) + (manage_users_for_group | default([]) ) + (manage_users_other | default([]) ) }}"
 
     - name: Create sudo file
@@ -31,21 +33,26 @@
           {{ item.username }}   ALL=(ALL) ALL
         validate: '/usr/sbin/visudo -cf %s'
       when:
-        - item.use_sudo|bool
+        - item.use_sudo is defined and item.use_sudo
+        - item.sudo_nopasswd is not defined or item.sudo_nopasswd is defined and item.sudo_nopasswd | bool == False
       loop: "{{ (manage_users | default([]) ) + (manage_users_for_group | default([]) ) + (manage_users_other | default([]) ) }}"
 
     - name: Delete sudo file
       file:
         path: "/etc/sudoers.d/10-{{ item.username }}"
         state: absent
-      when: (item.use_sudo|bool == False)
+      when:
+        - item.use_sudo | bool == False
       loop: "{{ (manage_users | default([]) ) + (manage_users_for_group | default([]) ) + (manage_users_other | default([]) ) }}"
-  when: ( item.use_sudo is defined )
+  when:
+    - item.use_sudo is defined
+
 
 - name: Set authorized key
   authorized_key:
-     user: "{{ manage_users.username }}"
-     state: present
-     key: "{{ manage_users | map(attribute='ssh_key')|join('\n') }}"
-  when: (manage_users.ssh_key is defined)
-  loop: "{{ (manage_users | default([]) ) + (manage_users_for_group | default([]) ) + (manage_users_other | default([]) ) }}"
+    user: "{{ item.0.username }}"
+    key: "{{ item.1 }}"
+  with_subelements:
+    - "{{ (manage_users | default([]) ) + (manage_users_for_group | default([]) ) + (manage_users_other | default([]) ) }}"
+    - ssh_authorized_keys
+    - skip_missing: true
